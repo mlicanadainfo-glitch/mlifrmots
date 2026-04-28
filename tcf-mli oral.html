@@ -218,7 +218,7 @@ main{flex:1;display:flex;justify-content:center;padding:28px 14px}
     </div>
   </div>
   <div class="card">
-    <div class="lbl">Votre réponse</div>
+    <div class="lbl">Votre question</div>
     <div class="rec-zone" id="rz">
       <div class="rec-st" id="rs">Appuyez sur Enregistrer pour poser votre question oralement</div>
       <audio class="audio-pl" id="rp"></audio>
@@ -227,10 +227,10 @@ main{flex:1;display:flex;justify-content:center;padding:28px 14px}
         <button class="btn btn-o" id="rb-stop" onclick="stopRec()" disabled>⏹ Arrêter</button>
       </div>
     </div>
-    <div class="lbl"><span id="student-lbl">Votre question (tapez ou enregistrez)</span></div>
+    <div class="lbl"><span id="student-lbl">Votre question</span></div>
     <textarea class="ta" id="iv-ans" placeholder="Écrivez votre question en français… (optionnel si vous enregistrez)" style="min-height:65px"></textarea>
     <div style="margin-top:12px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
-      <div class="q-ctr">Question <span id="q-cur">0</span> / <span id="q-tot">5</span></div>
+      <div class="q-ctr" id="q-ctr-display" style="font-size:12px;color:var(--muted)">Premier échange</div>
       <button class="btn btn-p" id="nq-btn" onclick="submitAnswer()" disabled>Poser ma question →</button>
     </div>
   </div>
@@ -383,7 +383,8 @@ const T3 = [
 let task=2, topic=null;
 let prepT=null, ivT=null, monoT=null;
 let prepSec=120, ivSec=210, monoSec=270;
-let convHist=[], qaLog=[], curQ="", qCount=0, maxQ=5, ended=false;
+let convHist=[], qaLog=[], curQ="", qCount=0, ended=false;
+let tuDetected=null;
 let mr=null, ac=[], mrMono=null, acMono=[];
 
 // ── TTS ──
@@ -426,7 +427,7 @@ function selectTask(t){
 // ── NAV ──
 function show(id){document.querySelectorAll('.scr').forEach(s=>s.classList.remove('on'));document.getElementById(id).classList.add('on');}
 function goHome(){clearAll();show('s0');}
-function restartAll(){clearAll();convHist=[];qaLog=[];qCount=0;ended=false;['prep-notes','iv-ans','mono-txt'].forEach(id=>document.getElementById(id).value='');show('s0');}
+function restartAll(){clearAll();convHist=[];qaLog=[];qCount=0;ended=false;tuDetected=null;ac=[];acMono=[];['prep-notes','iv-ans','mono-txt'].forEach(id=>document.getElementById(id).value='');show('s0');}
 function clearAll(){clearInterval(prepT);clearInterval(ivT);clearInterval(monoT);speechSynthesis.cancel();if(mr&&mr.state==='recording')mr.stop();if(mrMono&&mrMono.state==='recording')mrMono.stop();}
 function startSim(){task===2?startPrep():startT3();}
 
@@ -451,37 +452,40 @@ function updatePrep(){
 
 // ══ TÂCHE 2 — INTERVIEW ══
 // CORRECT FLOW: student asks → examiner responds → student asks again…
-// tutoyement/vouvoiement detected from student's first question
-
-let tuDetected = null; // null=unknown, true=tu, false=vous
+// tutoyement/vouvoiement detected from student's first typed question
 
 async function startInterview(){
-  clearInterval(prepT);speechSynthesis.cancel();
-  tuDetected = null;
+  clearInterval(prepT); speechSynthesis.cancel();
+  tuDetected=null; qCount=0;
   show('s2');
-  document.getElementById('q-tot').textContent=maxQ;
-  ivSec=210;updateIV();
-  ivT=setInterval(()=>{ivSec--;updateIV();if(ivSec<=0){clearInterval(ivT);if(!ended){document.getElementById('tup2').classList.add('show');document.getElementById('nq-btn').disabled=true;setTimeout(endInterview,2000);}}},1000);
-  // Examiner just opens the floor — student speaks first
+  ivSec=210; updateIV();
+  ivT=setInterval(()=>{
+    ivSec--; updateIV();
+    if(ivSec<=0){
+      clearInterval(ivT);
+      if(!ended){
+        document.getElementById('tup2').classList.add('show');
+        document.getElementById('nq-btn').disabled=true;
+        document.getElementById('rb-start').disabled=true;
+        setTimeout(endInterview, 2000);
+      }
+    }
+  }, 1000);
   openFloor();
 }
 
 function openFloor(){
   const bub=document.getElementById('ex-bub');
-  // Show examiner intro (no AI call needed — just a brief opener)
+  // Always start with neutral vous — will adapt after first student question
   const opener = "Bonjour. Vous pouvez commencer.";
   bub.innerHTML=`<div class="ex-name">Examinateur <div class="wave" id="wav"><span></span><span></span><span></span><span></span><span></span></div></div>${opener}`;
-  speak(opener, ()=>{
-    // After speaking, enable student input
-    setStudentTurn(true);
-  });
+  speak(opener, ()=>{ setStudentTurn(); });
 }
 
-function setStudentTurn(isFirst){
+function setStudentTurn(){
   document.getElementById('nq-btn').disabled=false;
-  document.getElementById('nq-btn').textContent = isFirst ? 'Poser ma question →' : 'Poser ma question →';
-  const lbl=document.getElementById('student-lbl');
-  if(lbl) lbl.textContent = isFirst ? 'Votre 1re question' : `Votre question (${qCount+1}/${maxQ})`;
+  const ctr=document.getElementById('q-ctr-display');
+  if(ctr) ctr.textContent = qCount===0 ? 'Premier échange' : `Échange n°${qCount+1}`;
   resetRecUI();
 }
 
@@ -495,28 +499,29 @@ function updateIV(){
 }
 
 async function submitAnswer(){
-  // "answer" here is actually the STUDENT'S QUESTION to the examiner
-  const studentQ=document.getElementById('iv-ans').value.trim();
-  if(!studentQ && !(mr && mr.state==='stopped')) return; // nothing submitted
+  const studentQ = document.getElementById('iv-ans').value.trim();
+  const hasRec = ac.length > 0;
+  if(!studentQ && !hasRec) return;
+
   qCount++;
-  document.getElementById('q-cur').textContent=qCount;
   document.getElementById('nq-btn').disabled=true;
 
-  // Detect tu/vous from student's text if not yet known
+  // Detect tu/vous from first typed question only
   if(tuDetected===null && studentQ){
     const lower=studentQ.toLowerCase();
-    // Check for tu-forms: tu, t', ton, ta, tes, te, toi
-    if(/\b(tu|t'|ton\b|ta\b|tes\b|\bte\b|toi\b)/.test(lower)) tuDetected=true;
-    else if(/\b(vous|votre|vos|vous-même)\b/.test(lower)) tuDetected=false;
-    // else stays null, default to vous
+    // tu-forms: standalone "tu", "t'", "ton", "ta", "tes", "te", "toi"
+    if(/\btu\b|\bt'|\bton\b|\bta\b|\btes\b|\bte\b|\btoi\b/.test(lower)) tuDetected=true;
+    else if(/\bvous\b|\bvotre\b|\bvos\b/.test(lower)) tuDetected=false;
+    else tuDetected=false; // default vous if ambiguous
   }
+  // For pure audio (no text), default to vous if still unknown
+  if(tuDetected===null) tuDetected=false;
 
   const studentText = studentQ || '[question posée oralement]';
   qaLog.push({question: studentText, answer: ''});
   convHist.push({role:"user", content: studentText});
 
-  if(mr&&mr.state==='recording')mr.stop();
-
+  if(mr&&mr.state==='recording') mr.stop();
   await examinerRespond(studentText);
 }
 
@@ -524,35 +529,33 @@ async function examinerRespond(studentQuestion){
   const bub=document.getElementById('ex-bub');
   bub.innerHTML=`<div class="ex-name">Examinateur <div class="wave" id="wav"><span></span><span></span><span></span><span></span><span></span></div></div><div class="dots"><span></span><span></span><span></span></div>`;
 
-  const vouvoie = tuDetected===true ? false : true; // default to vous if unknown
-  const pronoun = tuDetected===true ? 'tu/te/ton' : 'vous/votre';
+  const pronoun = tuDetected===true ? 'tu/te/ton/ta/toi' : 'vous/votre/vos';
+  const registre = tuDetected===true ? 'tutoiement (tu)' : 'vouvoiement (vous)';
 
   const sys=`Tu joues un rôle dans un exercice oral du TCF Canada (Tâche 2, NCLC 7).
 Mise en situation : "${topic.text}"
-Joue EXACTEMENT le personnage décrit dans la mise en situation (ami, voisin, employé de magasin, agent immobilier, etc.).
-IMPORTANT — accord de vouvoiement : l'étudiant t'a parlé en utilisant "${pronoun}". Tu dois lui répondre en utilisant le MÊME registre (${tuDetected===true?'tutoiement':'vouvoiement'}) tout au long de la conversation.
-L'étudiant vient de te poser cette question : "${studentQuestion}"
-Réponds naturellement comme ce personnage. Réponse courte et naturelle (2-4 phrases max). Reste dans le rôle. Ne pose pas de question en retour sauf si c'est très naturel. Réponds UNIQUEMENT avec ta réplique.`;
+Joue EXACTEMENT le personnage décrit dans la mise en situation (ami, voisin, employé, etc.).
+REGISTRE OBLIGATOIRE : l'étudiant utilise le ${registre}. Tu DOIS répondre avec exactement le même registre (${pronoun}) pendant TOUT l'entretien, sans exception.
+L'étudiant vient de te dire : "${studentQuestion}"
+Réponds naturellement, 2-3 phrases max. Reste dans le rôle. Réponds UNIQUEMENT avec ta réplique.`;
 
   try{
     const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:600,system:sys,messages:convHist})});
     const d=await res.json();
     curQ=d.content[0].text.trim();
   }catch(e){
-    curQ="Bien sûr ! Je peux vous donner plus d'informations à ce sujet.";
+    curQ = tuDetected ? "Bien sûr ! Tu peux me poser d'autres questions." : "Bien sûr ! Vous pouvez me poser d'autres questions.";
   }
 
-  convHist.push({role:"assistant",content:curQ});
-  // Store examiner response in last qaLog entry
+  convHist.push({role:"assistant", content:curQ});
   if(qaLog.length>0) qaLog[qaLog.length-1].examinerReply = curQ;
 
   bub.innerHTML=`<div class="ex-name">Examinateur <div class="wave" id="wav"><span></span><span></span><span></span><span></span><span></span></div></div>${curQ}`;
   speak(curQ, ()=>{
-    if(qCount>=maxQ || ivSec<=5) endInterview();
+    if(ivSec<=5) endInterview();
     else {
-      // Clear answer field and re-enable for next student question
       document.getElementById('iv-ans').value='';
-      setStudentTurn(false);
+      setStudentTurn();
       resetRecUI();
     }
   });
@@ -577,20 +580,24 @@ async function startRec(){
     const s=await navigator.mediaDevices.getUserMedia({audio:true});
     ac=[];mr=new MediaRecorder(s);
     mr.ondataavailable=e=>ac.push(e.data);
-    mr.onstop=()=>{
+    mr.onstop=async ()=>{
       const blob=new Blob(ac,{type:'audio/webm'});
       const pl=document.getElementById('rp');
       pl.src=URL.createObjectURL(blob);pl.style.display='block';
       document.getElementById('rz').className='rec-zone done';
-      document.getElementById('rs').textContent='✅ Enregistrement terminé — vous pouvez écouter ou passer à la suite';
+      document.getElementById('rs').innerHTML='✅ Enregistrement reçu — <em>l\'examinateur répond…</em>';
       s.getTracks().forEach(t=>t.stop());
-      document.getElementById('nq-btn').disabled=false;
+      document.getElementById('rb-start').disabled=true;
+      document.getElementById('rb-stop').disabled=true;
+      document.getElementById('nq-btn').disabled=true;
+      // Auto-submit — no need to press button
+      await submitAnswer();
     };
     mr.start();
     document.getElementById('rb-start').disabled=true;
     document.getElementById('rb-stop').disabled=false;
     document.getElementById('rz').className='rec-zone rec';
-    document.getElementById('rs').innerHTML='<span class="rec-pulse"></span>Enregistrement en cours…';
+    document.getElementById('rs').innerHTML='<span class="rec-pulse"></span>Enregistrement en cours… appuyez sur ⏹ quand vous avez terminé';
   }catch(e){document.getElementById('rs').textContent='❌ Accès micro refusé';}
 }
 function stopRec(){if(mr&&mr.state==='recording'){mr.stop();document.getElementById('rb-stop').disabled=true;}}
