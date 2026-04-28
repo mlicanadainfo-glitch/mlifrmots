@@ -227,26 +227,27 @@ main{flex:1;display:flex;justify-content:center;padding:28px 14px}
         <button class="btn btn-o" id="rb-stop" onclick="stopRec()" disabled>⏹ Arrêter</button>
       </div>
     </div>
-    <div class="lbl"><span id="student-lbl">Votre question</span></div>
-    <textarea class="ta" id="iv-ans" placeholder="Écrivez votre question en français… (optionnel si vous enregistrez)" style="min-height:65px"></textarea>
     <div style="margin-top:12px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
       <div class="q-ctr" id="q-ctr-display" style="font-size:12px;color:var(--muted)">Premier échange</div>
-      <button class="btn btn-p" id="nq-btn" onclick="submitAnswer()" disabled>Poser ma question →</button>
     </div>
   </div>
 </div>
 
 <!-- ═══ SCREEN 3: Tâche 3 reading ═══ -->
 <div class="scr" id="s3">
-  <div class="card">
-    <div class="topic-box">
-      <div class="lbl">Sujet — Tâche 3</div>
-      <div class="topic-txt" id="t3-txt"></div>
+  <div class="card" style="text-align:center;padding:36px 28px">
+    <div style="font-size:36px;margin-bottom:16px">🎧</div>
+    <div class="lbl">Tâche 3 — Écoutez le sujet</div>
+    <div id="t3-st" style="font-size:15px;color:var(--txt);margin:14px 0;font-weight:600">L'examinateur va lire votre sujet.<br><span style="font-size:13px;font-weight:400;color:var(--muted)">Écoutez attentivement — vous ne pouvez pas lire le sujet.</span></div>
+    <div id="t3-wave-wrap" style="display:none;justify-content:center;gap:5px;align-items:flex-end;height:40px;margin:16px 0">
+      <div style="width:5px;background:var(--blue);border-radius:3px;animation:wv 0.8s ease-in-out infinite;height:40px"></div>
+      <div style="width:5px;background:var(--blue);border-radius:3px;animation:wv 0.8s ease-in-out infinite;animation-delay:.1s;height:28px"></div>
+      <div style="width:5px;background:var(--green);border-radius:3px;animation:wv 0.8s ease-in-out infinite;animation-delay:.2s;height:36px"></div>
+      <div style="width:5px;background:var(--green);border-radius:3px;animation:wv 0.8s ease-in-out infinite;animation-delay:.3s;height:20px"></div>
+      <div style="width:5px;background:var(--blue);border-radius:3px;animation:wv 0.8s ease-in-out infinite;animation-delay:.4s;height:32px"></div>
+      <div style="width:5px;background:var(--blue);border-radius:3px;animation:wv 0.8s ease-in-out infinite;animation-delay:.5s;height:24px"></div>
+      <div style="width:5px;background:var(--green);border-radius:3px;animation:wv 0.8s ease-in-out infinite;animation-delay:.15s;height:40px"></div>
     </div>
-  </div>
-  <div class="card" style="text-align:center">
-    <div class="lbl">L'examinateur va lire le sujet à voix haute</div>
-    <div id="t3-st" style="font-size:13px;color:var(--muted);margin:12px 0">Cliquez pour lancer la lecture</div>
     <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
       <button class="btn btn-p" id="t3-read-btn" onclick="t3Read()">🔊 Lire le sujet</button>
       <button class="btn btn-g" id="t3-go-btn" onclick="startMono()" disabled>🎙️ Commencer le monologue</button>
@@ -257,12 +258,6 @@ main{flex:1;display:flex;justify-content:center;padding:28px 14px}
 
 <!-- ═══ SCREEN 4: Tâche 3 monologue ═══ -->
 <div class="scr" id="s4">
-  <div class="card">
-    <div class="topic-box" style="padding:16px 20px">
-      <div class="lbl">Rappel du sujet</div>
-      <div class="topic-txt" id="t3-remind" style="font-size:16px"></div>
-    </div>
-  </div>
   <div class="card">
     <div class="monologue-box">
       <div class="mono-timer" id="mono-num">4:30</div>
@@ -456,7 +451,13 @@ function updatePrep(){
 
 async function startInterview(){
   clearInterval(prepT); speechSynthesis.cancel();
-  tuDetected=null; qCount=0;
+  qCount=0; ended=false; ac=[];
+
+  // Auto-detect register from topic context
+  const t=topic.text.toLowerCase();
+  if(/\bami\b|\bcopain\b|\bcopine\b|\bcolloc\b/.test(t)) tuDetected=true;
+  else tuDetected=false;
+
   show('s2');
   ivSec=210; updateIV();
   ivT=setInterval(()=>{
@@ -471,13 +472,19 @@ async function startInterview(){
       }
     }
   }, 1000);
+  // Show register hint under topic
+  const hint = document.getElementById('t2-hint');
+  if(hint){
+    const reg = tuDetected ? '💡 Registre détecté : <strong>tutoiement</strong> (ami/e)' : '💡 Registre détecté : <strong>vouvoiement</strong> (relation formelle)';
+    hint.innerHTML = hint.innerHTML + '<br><span style="color:rgba(255,255,255,.6);font-size:11px;margin-top:6px;display:block">' + reg + '</span>';
+  }
+
   openFloor();
 }
 
 function openFloor(){
   const bub=document.getElementById('ex-bub');
-  // Always start with neutral vous — will adapt after first student question
-  const opener = "Bonjour. Vous pouvez commencer.";
+  const opener = tuDetected ? "Salut ! Tu peux commencer." : "Bonjour. Vous pouvez commencer.";
   bub.innerHTML=`<div class="ex-name">Examinateur <div class="wave" id="wav"><span></span><span></span><span></span><span></span><span></span></div></div>${opener}`;
   speak(opener, ()=>{ setStudentTurn(); });
 }
@@ -499,45 +506,38 @@ function updateIV(){
 }
 
 async function submitAnswer(){
-  const studentQ = document.getElementById('iv-ans').value.trim();
   const hasRec = ac.length > 0;
-  if(!studentQ && !hasRec) return;
+  if(!hasRec) return;
 
   qCount++;
-  document.getElementById('nq-btn').disabled=true;
+  document.getElementById('nq-btn') && (document.getElementById('nq-btn').disabled=true);
 
-  // Detect tu/vous from first typed question only
-  if(tuDetected===null && studentQ){
-    const lower=studentQ.toLowerCase();
-    // tu-forms: standalone "tu", "t'", "ton", "ta", "tes", "te", "toi"
-    if(/\btu\b|\bt'|\bton\b|\bta\b|\btes\b|\bte\b|\btoi\b/.test(lower)) tuDetected=true;
-    else if(/\bvous\b|\bvotre\b|\bvos\b/.test(lower)) tuDetected=false;
-    else tuDetected=false; // default vous if ambiguous
-  }
-  // For pure audio (no text), default to vous if still unknown
+  // tu/vous can only be detected from text — default to vous for pure audio
   if(tuDetected===null) tuDetected=false;
 
-  const studentText = studentQ || '[question posée oralement]';
-  qaLog.push({question: studentText, answer: ''});
-  convHist.push({role:"user", content: studentText});
+  qaLog.push({question:'[question orale]', answer:''});
+  convHist.push({role:"user", content:'[question posée oralement par l\'étudiant]'});
 
-  if(mr&&mr.state==='recording') mr.stop();
-  await examinerRespond(studentText);
+  await examinerRespond('[question orale]');
 }
 
 async function examinerRespond(studentQuestion){
   const bub=document.getElementById('ex-bub');
   bub.innerHTML=`<div class="ex-name">Examinateur <div class="wave" id="wav"><span></span><span></span><span></span><span></span><span></span></div></div><div class="dots"><span></span><span></span><span></span></div>`;
 
-  const pronoun = tuDetected===true ? 'tu/te/ton/ta/toi' : 'vous/votre/vos';
-  const registre = tuDetected===true ? 'tutoiement (tu)' : 'vouvoiement (vous)';
+  const registre = tuDetected===true ? 'tutoiement (tu/ton/ta/te/toi)' : 'vouvoiement (vous/votre/vos)';
 
-  const sys=`Tu joues un rôle dans un exercice oral du TCF Canada (Tâche 2, NCLC 7).
-Mise en situation : "${topic.text}"
-Joue EXACTEMENT le personnage décrit dans la mise en situation (ami, voisin, employé, etc.).
-REGISTRE OBLIGATOIRE : l'étudiant utilise le ${registre}. Tu DOIS répondre avec exactement le même registre (${pronoun}) pendant TOUT l'entretien, sans exception.
-L'étudiant vient de te dire : "${studentQuestion}"
-Réponds naturellement, 2-3 phrases max. Reste dans le rôle. Réponds UNIQUEMENT avec ta réplique.`;
+  const sys=`Tu joues le personnage décrit dans cette mise en situation TCF Canada Tâche 2 : "${topic.text}"
+
+RÈGLES ABSOLUES :
+1. Tu RÉPONDS aux questions de l'étudiant. Tu NE POSES PAS de questions en retour. Jamais.
+2. Tu réponds naturellement, comme une vraie personne dans cette situation. 2-3 phrases maximum.
+3. Registre : l'étudiant utilise le ${registre}. Tu réponds OBLIGATOIREMENT avec le même registre tout au long, sans exception.
+4. Tu restes dans le personnage du rôle. Si l'étudiant pose une question hors sujet, tu réponds poliment mais brièvement.
+5. Tu fournis des informations concrètes et crédibles (invente des détails réalistes si nécessaire).
+6. Tu NE DIS PAS "Bien sûr !" ou "Absolument !" en début de réponse — commence directement par l'information.
+
+Réponds UNIQUEMENT avec ta réplique, rien d'autre.`;
 
   try{
     const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:600,system:sys,messages:convHist})});
@@ -605,22 +605,24 @@ function stopRec(){if(mr&&mr.state==='recording'){mr.stop();document.getElementB
 // ══ TÂCHE 3 ══
 function startT3(){
   topic={text:T3[Math.floor(Math.random()*T3.length)]};
-  document.getElementById('t3-txt').textContent=topic.text;
+  // Do NOT show topic text — student must listen only
   show('s3');
 }
 function t3Read(){
   document.getElementById('t3-read-btn').disabled=true;
-  document.getElementById('t3-st').innerHTML='<span style="display:inline-flex;gap:2px;align-items:flex-end;height:14px;vertical-align:middle">'+'<span style="width:3px;background:var(--gold);border-radius:2px;animation:wv 1s ease-in-out infinite;height:14px"></span>'.repeat(5)+'</span> L\'examinateur lit le sujet…';
-  speak('Voici votre sujet. '+topic.text+'. Vous avez quatre minutes trente pour développer votre réponse. Bonne chance.',()=>{
-    document.getElementById('t3-st').textContent='✅ Lecture terminée — vous pouvez commencer';
+  document.getElementById('t3-st').innerHTML='<span style="font-size:13px;color:var(--blue);font-weight:600">🔊 Lecture en cours…</span>';
+  const wave=document.getElementById('t3-wave-wrap');
+  if(wave) wave.style.display='flex';
+  speak('Voici votre sujet. '+topic.text+' Vous avez quatre minutes trente pour développer votre réponse.',()=>{
+    if(wave) wave.style.display='none';
+    document.getElementById('t3-st').innerHTML='✅ Lecture terminée.<br><span style="font-size:13px;font-weight:400;color:var(--muted)">Appuyez sur Commencer quand vous êtes prêt(e).</span>';
     document.getElementById('t3-go-btn').disabled=false;
   });
 }
 async function startMono(){
   speechSynthesis.cancel();
-  document.getElementById('t3-remind').textContent=topic.text;
   show('s4');
-  monoSec=270;updateMono();
+  monoSec=270; updateMono();
   try{
     const s=await navigator.mediaDevices.getUserMedia({audio:true});
     acMono=[];mrMono=new MediaRecorder(s);
