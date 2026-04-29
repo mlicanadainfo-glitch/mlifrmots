@@ -383,14 +383,43 @@ let convHist=[], qaLog=[], curQ="", qCount=0, ended=false;
 let tuDetected=null;
 let mr=null, ac=[], mrMono=null, acMono=[];
 
-// ── TTS ──
+// ── GEMINI API ──
+const GEMINI_KEY = 'AIzaSyA3CPXevCFlyYlLyrMPkrvGZWQ7e75VYPM';
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`;
+
+async function callGemini(system, messages, maxTokens=600){
+  // Convert Claude-style messages to Gemini format
+  const contents = messages.map(m=>({
+    role: m.role === 'assistant' ? 'model' : 'user',
+    parts: [{text: m.content}]
+  }));
+  const body = {
+    system_instruction: {parts:[{text: system}]},
+    contents,
+    generationConfig: {maxOutputTokens: maxTokens, temperature: 0.8}
+  };
+  const res = await fetch(GEMINI_URL, {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(body)
+  });
+  const d = await res.json();
+  if(d.error) throw new Error(d.error.message);
+  return d.candidates[0].content.parts[0].text.trim();
+}
 let ttsV=null;
 function loadV(){const v=speechSynthesis.getVoices();ttsV=v.find(x=>x.lang.startsWith('fr-CA'))||v.find(x=>x.lang.startsWith('fr-FR'))||v.find(x=>x.lang.startsWith('fr'))||null;}
 speechSynthesis.onvoiceschanged=loadV; loadV();
 
+function cleanForSpeech(txt){
+  // Remove gender markers like (e), (s), (ne), (ère) etc.
+  return txt.replace(/\([a-zéèêë]+\)/gi,'').replace(/\s+/g,' ').trim();
+}
+
 function speak(txt, cb){
   speechSynthesis.cancel();
   if(!txt){if(cb)cb();return;}
+  txt = cleanForSpeech(txt);
   const u=new SpeechSynthesisUtterance(txt);
   u.lang='fr-CA'; u.rate=0.9; u.pitch=1.05;
   if(ttsV)u.voice=ttsV;
@@ -525,23 +554,10 @@ RÈGLES :
 4. Ne commence JAMAIS par "Bien sûr", "Absolument", "Bonne question".
 Réponds UNIQUEMENT avec ta réplique.`;
   try{
-    const res=await fetch("https://api.anthropic.com/v1/messages",{
-      method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:300,system:sys,messages:convHist})
-    });
-    const d=await res.json();
-    console.log('API response:', JSON.stringify(d));
-    if(d.error){
-      curQ=`[Erreur API: ${d.error.type} — ${d.error.message}]`;
-    } else if(d.content && d.content[0] && d.content[0].text){
-      curQ=d.content[0].text.trim();
-    } else {
-      curQ=`[Réponse inattendue: ${JSON.stringify(d).substring(0,100)}]`;
-    }
+    curQ = await callGemini(sys, convHist, 300);
   }catch(e){
     console.error('examinerRespond error:', e);
-    curQ=`[Erreur réseau: ${e.message}]`;
+    curQ=`[Erreur: ${e.message}]`;
   }
   convHist.push({role:"assistant",content:curQ});
   if(qaLog.length>0) qaLog[qaLog.length-1].examinerReply=curQ;
@@ -755,22 +771,10 @@ async function genFeedback(isT3){
   }
   const prompt=`Tu es évaluateur expert TCF Canada NCLC 7.\n${content}\n\nRetourne UNIQUEMENT un objet JSON valide, sans backticks, sans texte avant ou après :\n{"score":75,"level":"NCLC 7","coherence":70,"vocabulary":75,"grammar":72,"relevance":78,"summary":"commentaire ici","strengths":"points forts ici","improvements":"points à améliorer ici","qa_comments":[{"q":1,"comment":"commentaire"}]}`;
   try{
-    const res=await fetch("https://api.anthropic.com/v1/messages",{
-      method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,messages:[{role:"user",content:prompt}]})
-    });
-    const d=await res.json();
-    // Show error details if API failed
-    if(d.error){
-      document.getElementById('fb-load').innerHTML=`<div style="color:var(--red);padding:16px">Erreur API : ${d.error.message}</div>`;
-      return;
-    }
-    const raw=d.content[0].text.trim();
-    // Strip any accidental markdown
-    const clean=raw.replace(/^```json\s*/,'').replace(/^```\s*/,'').replace(/\s*```$/,'').trim();
-    const fb=JSON.parse(clean);
-    showFB(fb,isT3);
+    const raw = await callGemini('Tu es évaluateur expert TCF Canada NCLC 7. Réponds UNIQUEMENT avec un JSON valide sans backticks.', [{role:'user', content:prompt}], 1000);
+    const clean = raw.replace(/^```json\s*/,'').replace(/^```\s*/,'').replace(/\s*```$/,'').trim();
+    const fb = JSON.parse(clean);
+    showFB(fb, isT3);
   }catch(e){
     document.getElementById('fb-load').innerHTML=`<div style="color:var(--red);padding:16px">Erreur : ${e.message}</div>`;
   }
