@@ -220,7 +220,8 @@ main{flex:1;display:flex;justify-content:center;padding:28px 14px}
   <div class="card">
     <div class="lbl">Votre question</div>
     <div class="rec-zone" id="rz">
-      <div class="rec-st" id="rs">Appuyez sur Enregistrer pour poser votre question oralement</div>
+      <div class="rec-st" id="rs">Appuyez sur Enregistrer pour poser votre question</div>
+      <div id="live-transcript" style="display:none;margin:8px 4px;font-size:13px;color:var(--txt);font-style:italic;min-height:20px;text-align:left;padding:6px 10px;background:rgba(75,188,232,.08);border-radius:6px;line-height:1.5"></div>
       <audio class="audio-pl" id="rp"></audio>
       <div class="rec-controls">
         <button class="btn btn-red" id="rb-start" onclick="startRec()">🔴 Enregistrer</button>
@@ -419,11 +420,21 @@ function selectTask(t){
     :`<div class="step"><div class="si">🔊</div><div class="st">Sujet lu</div><div class="sd">par l'examinateur</div></div><div class="step"><div class="si">🎙️</div><div class="st">Monologue</div><div class="sd">4 min 30</div></div><div class="step"><div class="si">📊</div><div class="st">Évaluation IA</div><div class="sd">automatique</div></div>`;
 }
 
-// ── NAV ──
 function show(id){document.querySelectorAll('.scr').forEach(s=>s.classList.remove('on'));document.getElementById(id).classList.add('on');}
 function goHome(){clearAll();show('s0');}
-function restartAll(){clearAll();convHist=[];qaLog=[];qCount=0;ended=false;tuDetected=null;ac=[];acMono=[];['prep-notes','iv-ans','mono-txt'].forEach(id=>document.getElementById(id).value='');show('s0');}
-function clearAll(){clearInterval(prepT);clearInterval(ivT);clearInterval(monoT);speechSynthesis.cancel();if(mr&&mr.state==='recording')mr.stop();if(mrMono&&mrMono.state==='recording')mrMono.stop();}
+function restartAll(){
+  clearAll();
+  convHist=[];qaLog=[];qCount=0;ended=false;tuDetected=null;ac=[];acMono=[];sttTranscript='';
+  const pn=document.getElementById('prep-notes'); if(pn)pn.value='';
+  show('s0');
+}
+function clearAll(){
+  clearInterval(prepT);clearInterval(ivT);clearInterval(monoT);
+  speechSynthesis.cancel();
+  if(recognition){try{recognition.stop();}catch(e){}recognition=null;}
+  if(mr&&mr.state==='recording')mr.stop();
+  if(mrMono&&mrMono.state==='recording')mrMono.stop();
+}
 function startSim(){task===2?startPrep():startT3();}
 
 // ══ TÂCHE 2 — PREP ══
@@ -446,54 +457,35 @@ function updatePrep(){
 }
 
 // ══ TÂCHE 2 — INTERVIEW ══
-// CORRECT FLOW: student asks → examiner responds → student asks again…
-// tutoyement/vouvoiement detected from student's first typed question
-
 async function startInterview(){
   clearInterval(prepT); speechSynthesis.cancel();
-  qCount=0; ended=false; ac=[];
-
-  // Auto-detect register from topic context
-  const t=topic.text.toLowerCase();
-  if(/\bami\b|\bcopain\b|\bcopine\b|\bcolloc\b/.test(t)) tuDetected=true;
-  else tuDetected=false;
-
+  qCount=0; ended=false; ac=[]; sttTranscript=''; convHist=[];
+  // Auto-detect register from topic
+  tuDetected=/\bami\b|\bcopain\b|\bcopine\b|\bcolloc\b/.test(topic.text.toLowerCase());
   show('s2');
   ivSec=210; updateIV();
   ivT=setInterval(()=>{
     ivSec--; updateIV();
-    if(ivSec<=0){
-      clearInterval(ivT);
-      if(!ended){
-        document.getElementById('tup2').classList.add('show');
-        document.getElementById('nq-btn').disabled=true;
-        document.getElementById('rb-start').disabled=true;
-        setTimeout(endInterview, 2000);
-      }
-    }
-  }, 1000);
-  // Show register hint under topic
-  const hint = document.getElementById('t2-hint');
-  if(hint){
-    const reg = tuDetected ? '💡 Registre détecté : <strong>tutoiement</strong> (ami/e)' : '💡 Registre détecté : <strong>vouvoiement</strong> (relation formelle)';
-    hint.innerHTML = hint.innerHTML + '<br><span style="color:rgba(255,255,255,.6);font-size:11px;margin-top:6px;display:block">' + reg + '</span>';
-  }
-
+    if(ivSec<=0){ clearInterval(ivT); if(!ended){ document.getElementById('tup2').classList.add('show'); setTimeout(endInterview,2000); } }
+  },1000);
   openFloor();
 }
 
 function openFloor(){
-  const bub=document.getElementById('ex-bub');
   const opener = tuDetected ? "Salut ! Tu peux commencer." : "Bonjour. Vous pouvez commencer.";
-  bub.innerHTML=`<div class="ex-name">Examinateur <div class="wave" id="wav"><span></span><span></span><span></span><span></span><span></span></div></div>${opener}`;
-  speak(opener, ()=>{ setStudentTurn(); });
+  setExaminerBubble(opener);
+  speak(opener, ()=>{ enableRecording(); });
 }
 
-function setStudentTurn(){
-  document.getElementById('nq-btn').disabled=false;
+function enableRecording(){
+  resetRecUI();
   const ctr=document.getElementById('q-ctr-display');
   if(ctr) ctr.textContent = qCount===0 ? 'Premier échange' : `Échange n°${qCount+1}`;
-  resetRecUI();
+}
+
+function setExaminerBubble(txt){
+  document.getElementById('ex-bub').innerHTML=
+    `<div class="ex-name">Examinateur <div class="wave" id="wav"><span></span><span></span><span></span><span></span><span></span></div></div>${txt}`;
 }
 
 function updateIV(){
@@ -505,141 +497,171 @@ function updateIV(){
   if(ivSec<=30)b.className='bar danger';
 }
 
+// Called by stopRec() after recording stops
 async function submitAnswer(){
-  const hasRec = ac.length > 0;
-  if(!hasRec) return;
-
   qCount++;
-  document.getElementById('nq-btn') && (document.getElementById('nq-btn').disabled=true);
-
-  // tu/vous can only be detected from text — default to vous for pure audio
-  if(tuDetected===null) tuDetected=false;
-
-  qaLog.push({question:'[question orale]', answer:''});
-  convHist.push({role:"user", content:'[question posée oralement par l\'étudiant]'});
-
-  await examinerRespond('[question orale]');
+  const spokenText = sttTranscript.trim() || null;
+  // Refine tu/vous from first question if we have text
+  if(qCount===1 && spokenText){
+    const l=spokenText.toLowerCase();
+    if(/\btu\b|\bt'|\bton\b|\bta\b|\btes\b|\bte\b|\btoi\b/.test(l)) tuDetected=true;
+    else if(/\bvous\b|\bvotre\b|\bvos\b/.test(l)) tuDetected=false;
+  }
+  const userMsg = spokenText || `[question orale n°${qCount}]`;
+  qaLog.push({question: userMsg, examinerReply:''});
+  convHist.push({role:"user", content: userMsg});
+  await examinerRespond();
 }
 
-async function examinerRespond(studentQuestion){
-  const bub=document.getElementById('ex-bub');
-  bub.innerHTML=`<div class="ex-name">Examinateur <div class="wave" id="wav"><span></span><span></span><span></span><span></span><span></span></div></div><div class="dots"><span></span><span></span><span></span></div>`;
-
-  const registre = tuDetected===true ? 'tutoiement (tu/ton/ta/te/toi)' : 'vouvoiement (vous/votre/vos)';
-
-  const sys=`Tu joues le personnage décrit dans cette mise en situation TCF Canada Tâche 2 : "${topic.text}"
-
-RÈGLES ABSOLUES :
-1. Tu RÉPONDS aux questions de l'étudiant. Tu NE POSES PAS de questions en retour. Jamais.
-2. Tu réponds naturellement, comme une vraie personne dans cette situation. 2-3 phrases maximum.
-3. Registre : l'étudiant utilise le ${registre}. Tu réponds OBLIGATOIREMENT avec le même registre tout au long, sans exception.
-4. Tu restes dans le personnage du rôle. Si l'étudiant pose une question hors sujet, tu réponds poliment mais brièvement.
-5. Tu fournis des informations concrètes et crédibles (invente des détails réalistes si nécessaire).
-6. Tu NE DIS PAS "Bien sûr !" ou "Absolument !" en début de réponse — commence directement par l'information.
-
-Réponds UNIQUEMENT avec ta réplique, rien d'autre.`;
-
+async function examinerRespond(){
+  setExaminerBubble('<div class="dots"><span></span><span></span><span></span></div>');
+  const registre = tuDetected ? 'tutoiement — utilise TU, TON, TA, TE, TOI' : 'vouvoiement — utilise VOUS, VOTRE, VOS';
+  const sys=`Tu joues le personnage de cette mise en situation TCF Canada Tâche 2 : "${topic.text}"
+RÈGLES :
+1. Réponds directement à la question posée. Ne pose JAMAIS de question en retour.
+2. Réponse naturelle et concrète, 2-3 phrases max. Invente des détails réalistes si besoin.
+3. Registre OBLIGATOIRE tout au long : ${registre}.
+4. Ne commence JAMAIS par "Bien sûr", "Absolument", "Bonne question".
+Réponds UNIQUEMENT avec ta réplique.`;
   try{
-    const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:600,system:sys,messages:convHist})});
+    const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:300,system:sys,messages:convHist})});
     const d=await res.json();
     curQ=d.content[0].text.trim();
   }catch(e){
-    curQ = tuDetected ? "Bien sûr ! Tu peux me poser d'autres questions." : "Bien sûr ! Vous pouvez me poser d'autres questions.";
+    curQ=tuDetected?"Désolé, je n'ai pas bien entendu, tu peux répéter?":"Désolé, je n'ai pas bien entendu, pouvez-vous répéter?";
   }
-
-  convHist.push({role:"assistant", content:curQ});
-  if(qaLog.length>0) qaLog[qaLog.length-1].examinerReply = curQ;
-
-  bub.innerHTML=`<div class="ex-name">Examinateur <div class="wave" id="wav"><span></span><span></span><span></span><span></span><span></span></div></div>${curQ}`;
-  speak(curQ, ()=>{
-    if(ivSec<=5) endInterview();
-    else {
-      document.getElementById('iv-ans').value='';
-      setStudentTurn();
-      resetRecUI();
-    }
-  });
+  convHist.push({role:"assistant",content:curQ});
+  if(qaLog.length>0) qaLog[qaLog.length-1].examinerReply=curQ;
+  setExaminerBubble(curQ);
+  speak(curQ, ()=>{ if(!ended && ivSec>3) enableRecording(); });
 }
 
 async function endInterview(){
-  ended=true;clearInterval(ivT);speechSynthesis.cancel();
+  if(ended)return;
+  ended=true; clearInterval(ivT); speechSynthesis.cancel();
   if(mr&&mr.state==='recording')mr.stop();
-  show('s5');await genFeedback(false);
+  if(recognition){try{recognition.stop();}catch(e){}recognition=null;}
+  show('s5'); await genFeedback(false);
 }
 
-// ══ RECORDING — Tâche 2 ══
+// ══ RECORDING + STT — Tâche 2 ══
+let sttTranscript='';
+let recognition=null;
+
 function resetRecUI(){
   document.getElementById('rz').className='rec-zone';
-  document.getElementById('rs').textContent='Appuyez sur Enregistrer pour répondre oralement';
-  const pl=document.getElementById('rp');pl.style.display='none';pl.src='';
+  document.getElementById('rs').textContent='🎤 Appuyez sur Enregistrer pour parler';
+  const pl=document.getElementById('rp'); pl.style.display='none'; pl.src='';
   document.getElementById('rb-start').disabled=false;
   document.getElementById('rb-stop').disabled=true;
+  sttTranscript='';
+  const lt=document.getElementById('live-transcript');
+  if(lt){lt.textContent='';lt.style.display='none';}
 }
+
 async function startRec(){
+  sttTranscript='';
+  // MediaRecorder for audio playback
   try{
     const s=await navigator.mediaDevices.getUserMedia({audio:true});
-    ac=[];mr=new MediaRecorder(s);
-    mr.ondataavailable=e=>ac.push(e.data);
-    mr.onstop=async ()=>{
-      const blob=new Blob(ac,{type:'audio/webm'});
-      const pl=document.getElementById('rp');
-      pl.src=URL.createObjectURL(blob);pl.style.display='block';
-      document.getElementById('rz').className='rec-zone done';
-      document.getElementById('rs').innerHTML='✅ Enregistrement reçu — <em>l\'examinateur répond…</em>';
+    ac=[]; mr=new MediaRecorder(s);
+    mr.ondataavailable=e=>{if(e.data.size>0)ac.push(e.data);};
+    mr.onstop=()=>{
       s.getTracks().forEach(t=>t.stop());
-      document.getElementById('rb-start').disabled=true;
-      document.getElementById('rb-stop').disabled=true;
-      document.getElementById('nq-btn').disabled=true;
-      // Auto-submit — no need to press button
-      await submitAnswer();
+      if(ac.length>0){
+        const pl=document.getElementById('rp');
+        pl.src=URL.createObjectURL(new Blob(ac,{type:'audio/webm'}));
+        pl.style.display='block';
+      }
     };
-    mr.start();
-    document.getElementById('rb-start').disabled=true;
-    document.getElementById('rb-stop').disabled=false;
-    document.getElementById('rz').className='rec-zone rec';
-    document.getElementById('rs').innerHTML='<span class="rec-pulse"></span>Enregistrement en cours… appuyez sur ⏹ quand vous avez terminé';
-  }catch(e){document.getElementById('rs').textContent='❌ Accès micro refusé';}
+    mr.start(100); // collect data every 100ms
+  }catch(e){
+    document.getElementById('rs').textContent='❌ Accès micro refusé';
+    return;
+  }
+  // SpeechRecognition for live transcript
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(SR){
+    recognition=new SR();
+    recognition.lang='fr-FR'; recognition.continuous=true; recognition.interimResults=true;
+    recognition.onresult=(e)=>{
+      let fin='',int='';
+      for(let i=e.resultIndex;i<e.results.length;i++){
+        if(e.results[i].isFinal)fin+=e.results[i][0].transcript;
+        else int+=e.results[i][0].transcript;
+      }
+      sttTranscript+=fin;
+      const lt=document.getElementById('live-transcript');
+      if(lt){lt.textContent=(sttTranscript+int).trim();lt.style.display='block';}
+    };
+    recognition.onerror=()=>{};
+    try{recognition.start();}catch(e){}
+  }
+  document.getElementById('rb-start').disabled=true;
+  document.getElementById('rb-stop').disabled=false;
+  document.getElementById('rz').className='rec-zone rec';
+  document.getElementById('rs').innerHTML='<span class="rec-pulse"></span>Parlez… appuyez sur ⏹ quand vous avez terminé';
 }
-function stopRec(){if(mr&&mr.state==='recording'){mr.stop();document.getElementById('rb-stop').disabled=true;}}
+
+function stopRec(){
+  // Stop STT first
+  if(recognition){try{recognition.stop();}catch(e){}recognition=null;}
+  // Stop MediaRecorder
+  if(mr&&mr.state==='recording')mr.stop();
+  document.getElementById('rb-start').disabled=true;
+  document.getElementById('rb-stop').disabled=true;
+  document.getElementById('rz').className='rec-zone done';
+  document.getElementById('rs').innerHTML='✅ Reçu — <em>l\'examinateur répond…</em>';
+  // Wait a bit for final STT results then submit
+  setTimeout(()=>submitAnswer(), 500);
+}
 
 // ══ TÂCHE 3 ══
 function startT3(){
   topic={text:T3[Math.floor(Math.random()*T3.length)]};
-  // Do NOT show topic text — student must listen only
   show('s3');
 }
 function t3Read(){
   document.getElementById('t3-read-btn').disabled=true;
-  document.getElementById('t3-st').innerHTML='<span style="font-size:13px;color:var(--blue);font-weight:600">🔊 Lecture en cours…</span>';
   const wave=document.getElementById('t3-wave-wrap');
-  if(wave) wave.style.display='flex';
+  if(wave)wave.style.display='flex';
+  document.getElementById('t3-st').innerHTML='<span style="font-size:13px;color:var(--blue);font-weight:600">🔊 L\'examinateur lit le sujet…</span>';
   speak('Voici votre sujet. '+topic.text+' Vous avez quatre minutes trente pour développer votre réponse.',()=>{
-    if(wave) wave.style.display='none';
+    if(wave)wave.style.display='none';
     document.getElementById('t3-st').innerHTML='✅ Lecture terminée.<br><span style="font-size:13px;font-weight:400;color:var(--muted)">Appuyez sur Commencer quand vous êtes prêt(e).</span>';
     document.getElementById('t3-go-btn').disabled=false;
   });
 }
+
 async function startMono(){
   speechSynthesis.cancel();
   show('s4');
   monoSec=270; updateMono();
   try{
     const s=await navigator.mediaDevices.getUserMedia({audio:true});
-    acMono=[];mrMono=new MediaRecorder(s);
-    mrMono.ondataavailable=e=>acMono.push(e.data);
+    acMono=[]; mrMono=new MediaRecorder(s);
+    mrMono.ondataavailable=e=>{if(e.data.size>0)acMono.push(e.data);};
     mrMono.onstop=()=>{
-      const pl=document.getElementById('mrp');
-      pl.src=URL.createObjectURL(new Blob(acMono,{type:'audio/webm'}));
-      pl.style.display='block';
+      s.getTracks().forEach(t=>t.stop());
+      if(acMono.length>0){
+        const pl=document.getElementById('mrp');
+        pl.src=URL.createObjectURL(new Blob(acMono,{type:'audio/webm'}));
+        pl.style.display='block';
+      }
       document.getElementById('mrz').className='rec-zone done';
       document.getElementById('mrs').textContent='✅ Enregistrement terminé';
-      s.getTracks().forEach(t=>t.stop());
     };
-    mrMono.start();
+    mrMono.start(100);
     document.getElementById('mrz').className='rec-zone rec';
     document.getElementById('mrs').innerHTML='<span class="rec-pulse"></span>Enregistrement en cours…';
-  }catch(e){document.getElementById('mrs').textContent='⚠️ Micro non disponible';}
-  monoT=setInterval(()=>{monoSec--;updateMono();if(monoSec<=0){clearInterval(monoT);document.getElementById('tup3').classList.add('show');stopMonoRec();}},1000);
+  }catch(e){
+    document.getElementById('mrs').textContent='⚠️ Micro non disponible';
+  }
+  monoT=setInterval(()=>{
+    monoSec--;updateMono();
+    if(monoSec<=0){clearInterval(monoT);document.getElementById('tup3').classList.add('show');stopMonoRec();}
+  },1000);
 }
 function updateMono(){
   const m=Math.floor(monoSec/60),s=monoSec%60;
@@ -649,26 +671,34 @@ function updateMono(){
   if(monoSec<=60)b.classList.add('warn');
   if(monoSec<=30)b.className='bar danger';
 }
-function stopMonoRec(){if(mrMono&&mrMono.state==='recording'){mrMono.stop();document.getElementById('mono-stop-btn').disabled=true;}}
-async function endMono(){clearInterval(monoT);stopMonoRec();speechSynthesis.cancel();show('s5');await genFeedback(true);}
+function stopMonoRec(){
+  if(mrMono&&mrMono.state==='recording'){mrMono.stop();document.getElementById('mono-stop-btn').disabled=true;}
+}
+async function endMono(){
+  clearInterval(monoT); stopMonoRec(); speechSynthesis.cancel();
+  show('s5'); await genFeedback(true);
+}
 
 // ══ AI FEEDBACK ══
 async function genFeedback(isT3){
   let content;
   if(isT3){
-    const notes=document.getElementById('mono-txt').value.trim();
-    content=`Tâche 3 — Monologue\nSujet : "${topic.text}"\nNotes/transcription : ${notes||'(monologue oral)'}`;
+    content=`Tâche 3 — Monologue suivi\nSujet : "${topic.text}"\nNote : l'étudiant a fait un monologue oral de 4 min 30 sur ce sujet. Évalue sur la base du sujet donné.`;
     document.getElementById('qa-sec').style.display='none';
   }else{
-    const qa=qaLog.map((x,i)=>`Question ${i+1} (étudiant) : ${x.question}\nRéponse (examinateur) : ${x.examinerReply||'(non capturée)'}`).join('\n\n');
-    content=`Tâche 2 — Interaction guidée\nMise en situation : "${topic.text}"\n\n${qa}\n\nNote : dans la Tâche 2, c'est l'étudiant qui pose les questions et l'examinateur qui répond. Évalue la qualité, variété, pertinence et richesse linguistique des questions de l'étudiant.`;
+    const qa=qaLog.map((x,i)=>`Échange ${i+1}\nQuestion étudiant : ${x.question}\nRéponse examinateur : ${x.examinerReply||''}`).join('\n\n');
+    content=`Tâche 2 — Interaction guidée\nMise en situation : "${topic.text}"\n\n${qa}\n\nÉvalue la qualité des questions de l'étudiant : pertinence, variété, richesse lexicale, syntaxe.`;
   }
-  const p=`Tu es évaluateur expert TCF Canada NCLC 7.\n${content}\n\nRetourne UNIQUEMENT un JSON valide (sans backticks):\n{"score":<0-100>,"level":"<NCLC X>","coherence":<0-100>,"vocabulary":<0-100>,"grammar":<0-100>,"relevance":<0-100>,"summary":"<2-3 phrases>","strengths":"<2-3 points forts>","improvements":"<2-3 points à améliorer>","qa_comments":[{"q":1,"comment":"..."},...]}`;
+  const prompt=`Tu es évaluateur expert TCF Canada NCLC 7.\n${content}\n\nRetourne UNIQUEMENT un JSON valide sans backticks :\n{"score":<0-100>,"level":"NCLC X","coherence":<0-100>,"vocabulary":<0-100>,"grammar":<0-100>,"relevance":<0-100>,"summary":"...","strengths":"...","improvements":"...","qa_comments":[{"q":1,"comment":"..."}]}`;
   try{
-    const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,messages:[{role:"user",content:p}]})});
+    const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,messages:[{role:"user",content:prompt}]})});
     const d=await res.json();
-    showFB(JSON.parse(d.content[0].text.trim().replace(/```json|```/g,'')),isT3);
-  }catch(e){document.getElementById('fb-load').innerHTML='<div style="color:var(--red)">Erreur d\'analyse. Réessayez.</div>';}
+    const txt=d.content[0].text.trim().replace(/```json|```/g,'').trim();
+    showFB(JSON.parse(txt),isT3);
+  }catch(e){
+    document.getElementById('fb-load').innerHTML='<div style="color:var(--red);padding:16px">Erreur d\'analyse — réessayez.</div>';
+  }
 }
 function showFB(fb,isT3){
   document.getElementById('fb-load').style.display='none';
@@ -678,8 +708,11 @@ function showFB(fb,isT3){
   setTimeout(()=>{sb('c',fb.coherence);sb('v',fb.vocabulary);sb('g',fb.grammar);sb('r',fb.relevance);},100);
   document.getElementById('fb-cmt').textContent=`✅ Points forts :\n${fb.strengths}\n\n📈 À améliorer :\n${fb.improvements}\n\n💬 Commentaire général :\n${fb.summary}`;
   if(!isT3&&qaLog.length>0){
-    const r=document.getElementById('qa-rev');r.innerHTML='';
-    qaLog.forEach((x,i)=>{const c=fb.qa_comments?.[i]?.comment||'';r.innerHTML+=`<div class="qa-i"><div class="qa-q">Q${i+1} (étudiant) — ${x.question}</div><div class="qa-a" style="color:var(--muted);font-size:11px;margin-bottom:4px">↩ ${x.examinerReply||''}</div>${c?`<div class="qa-c">💬 ${c}</div>`:''}</div>`;});
+    const r=document.getElementById('qa-rev'); r.innerHTML='';
+    qaLog.forEach((x,i)=>{
+      const c=fb.qa_comments?.[i]?.comment||'';
+      r.innerHTML+=`<div class="qa-i"><div class="qa-q">Échange ${i+1} — ${x.question}</div><div class="qa-a" style="color:var(--muted);font-size:11px;margin-bottom:4px;font-style:italic">↩ ${x.examinerReply||''}</div>${c?`<div class="qa-c">💬 ${c}</div>`:''}</div>`;
+    });
   }
 }
 function sb(id,val){document.getElementById('b'+id).style.width=val+'%';document.getElementById('v'+id).textContent=val+' / 100';}
