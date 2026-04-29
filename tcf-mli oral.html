@@ -385,7 +385,7 @@ let mr=null, ac=[], mrMono=null, acMono=[];
 
 // ── GEMINI API ──
 const GEMINI_KEY = 'AIzaSyBSNhsndtnxbTnTdPKnAcxmnv75jYRjOT0';
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-04-17:generateContent?key=${GEMINI_KEY}`;
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${GEMINI_KEY}`;
 
 async function callGemini(system, messages, maxTokens=600){
   // Convert Claude-style messages to Gemini format
