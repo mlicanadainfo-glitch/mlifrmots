@@ -525,19 +525,27 @@ RÈGLES :
 4. Ne commence JAMAIS par "Bien sûr", "Absolument", "Bonne question".
 Réponds UNIQUEMENT avec ta réplique.`;
   try{
-    const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:300,system:sys,messages:convHist})});
+    const res=await fetch("https://api.anthropic.com/v1/messages",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:300,system:sys,messages:convHist})
+    });
     const d=await res.json();
-    curQ=d.content[0].text.trim();
+    console.log('API response:', JSON.stringify(d));
+    if(d.error){
+      curQ=`[Erreur API: ${d.error.type} — ${d.error.message}]`;
+    } else if(d.content && d.content[0] && d.content[0].text){
+      curQ=d.content[0].text.trim();
+    } else {
+      curQ=`[Réponse inattendue: ${JSON.stringify(d).substring(0,100)}]`;
+    }
   }catch(e){
-    curQ=tuDetected?"Je n'ai pas bien entendu, tu peux répéter ?":"Je n'ai pas bien entendu, pouvez-vous répéter ?";
+    console.error('examinerRespond error:', e);
+    curQ=`[Erreur réseau: ${e.message}]`;
   }
-  // Always update UI and log immediately
   convHist.push({role:"assistant",content:curQ});
   if(qaLog.length>0) qaLog[qaLog.length-1].examinerReply=curQ;
   setExaminerBubble(curQ);
-
-  // Speak, and always re-enable recording when done (even on TTS error)
   const afterSpeak = ()=>{ if(!ended && ivSec>3) enableRecording(); };
   try{ speak(curQ, afterSpeak); }catch(e){ afterSpeak(); }
 }
