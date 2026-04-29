@@ -266,21 +266,21 @@ main{flex:1;display:flex;justify-content:center;padding:28px 14px}
       <div class="mono-hint">Développez vos idées, donnez des arguments et des exemples concrets</div>
     </div>
     <div class="bar-w" style="margin-top:10px"><div class="bar" id="mono-bar" style="width:100%"></div></div>
-    <div class="tup" id="tup3">⏱ Temps écoulé — fin du monologue</div>
+    <div class="tup" id="tup3">⏱ Temps écoulé — analyse en cours…</div>
   </div>
   <div class="card">
-    <div class="lbl">Enregistrement de votre monologue</div>
-    <div class="rec-zone" id="mrz">
-      <div class="rec-st" id="mrs">En attente de l'enregistrement…</div>
-      <audio class="audio-pl" id="mrp"></audio>
-      <div class="rec-controls">
-        <button class="btn btn-o" id="mono-stop-btn" onclick="stopMonoRec()">⏹ Terminer l'enregistrement</button>
-      </div>
+    <div class="lbl">Transcription en direct</div>
+    <div id="mono-live-transcript" style="min-height:80px;font-size:13px;line-height:1.7;color:var(--txt);background:#f8fcff;border:1px solid var(--bdr);border-radius:8px;padding:12px;margin-bottom:12px">
+      <span style="color:var(--muted);font-style:italic">Votre discours apparaîtra ici…</span>
     </div>
-    <div class="lbl">Notes / points clés (optionnel)</div>
-    <textarea class="ta" id="mono-txt" placeholder="Notez les idées que vous avez développées…" style="min-height:80px"></textarea>
-    <div style="margin-top:12px">
-      <button class="btn btn-p" onclick="endMono()">Terminer et voir l'évaluation →</button>
+    <div class="lbl">Enregistrement</div>
+    <div class="rec-zone" id="mrz">
+      <div class="rec-st" id="mrs">En attente…</div>
+      <audio class="audio-pl" id="mrp"></audio>
+    </div>
+    <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn btn-o" id="mono-stop-btn" onclick="stopMonoRec()">⏹ Terminer</button>
+      <button class="btn btn-g" onclick="endMono()">Voir l'évaluation →</button>
     </div>
   </div>
 </div>
@@ -394,8 +394,9 @@ function speak(txt, cb){
   const u=new SpeechSynthesisUtterance(txt);
   u.lang='fr-CA'; u.rate=0.9; u.pitch=1.05;
   if(ttsV)u.voice=ttsV;
-  u.onstart=()=>document.getElementById('wav')?.classList.add('on');
-  u.onend=u.onerror=()=>{document.getElementById('wav')?.classList.remove('on');if(cb)cb();}
+  u.onstart=()=>{ const w=document.getElementById('wav'); if(w)w.classList.add('on'); };
+  u.onend=()=>{ const w=document.getElementById('wav'); if(w)w.classList.remove('on'); if(cb)cb(); };
+  u.onerror=()=>{ const w=document.getElementById('wav'); if(w)w.classList.remove('on'); if(cb)cb(); };
   speechSynthesis.speak(u);
 }
 
@@ -424,7 +425,7 @@ function show(id){document.querySelectorAll('.scr').forEach(s=>s.classList.remov
 function goHome(){clearAll();show('s0');}
 function restartAll(){
   clearAll();
-  convHist=[];qaLog=[];qCount=0;ended=false;tuDetected=null;ac=[];acMono=[];sttTranscript='';
+  convHist=[];qaLog=[];qCount=0;ended=false;monoEnded=false;tuDetected=null;ac=[];acMono=[];sttTranscript='';
   const pn=document.getElementById('prep-notes'); if(pn)pn.value='';
   show('s0');
 }
@@ -529,12 +530,16 @@ Réponds UNIQUEMENT avec ta réplique.`;
     const d=await res.json();
     curQ=d.content[0].text.trim();
   }catch(e){
-    curQ=tuDetected?"Désolé, je n'ai pas bien entendu, tu peux répéter?":"Désolé, je n'ai pas bien entendu, pouvez-vous répéter?";
+    curQ=tuDetected?"Je n'ai pas bien entendu, tu peux répéter ?":"Je n'ai pas bien entendu, pouvez-vous répéter ?";
   }
+  // Always update UI and log immediately
   convHist.push({role:"assistant",content:curQ});
   if(qaLog.length>0) qaLog[qaLog.length-1].examinerReply=curQ;
   setExaminerBubble(curQ);
-  speak(curQ, ()=>{ if(!ended && ivSec>3) enableRecording(); });
+
+  // Speak, and always re-enable recording when done (even on TTS error)
+  const afterSpeak = ()=>{ if(!ended && ivSec>3) enableRecording(); };
+  try{ speak(curQ, afterSpeak); }catch(e){ afterSpeak(); }
 }
 
 async function endInterview(){
@@ -634,10 +639,16 @@ function t3Read(){
   });
 }
 
+let monoSttTranscript='';
+let monoRecognition=null;
+
 async function startMono(){
   speechSynthesis.cancel();
+  monoSttTranscript=''; monoEnded=false;
   show('s4');
   monoSec=270; updateMono();
+
+  // ── MediaRecorder ──
   try{
     const s=await navigator.mediaDevices.getUserMedia({audio:true});
     acMono=[]; mrMono=new MediaRecorder(s);
@@ -658,9 +669,44 @@ async function startMono(){
   }catch(e){
     document.getElementById('mrs').textContent='⚠️ Micro non disponible';
   }
+
+  // ── SpeechRecognition ──
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(SR){
+    monoRecognition=new SR();
+    monoRecognition.lang='fr-FR';
+    monoRecognition.continuous=true;
+    monoRecognition.interimResults=true;
+    monoRecognition.onresult=(e)=>{
+      let fin='', int='';
+      for(let i=e.resultIndex;i<e.results.length;i++){
+        if(e.results[i].isFinal) fin+=e.results[i][0].transcript+' ';
+        else int+=e.results[i][0].transcript;
+      }
+      monoSttTranscript+=fin;
+      const el=document.getElementById('mono-live-transcript');
+      if(el) el.innerHTML=`<span style="color:var(--txt)">${monoSttTranscript}</span><span style="color:var(--muted);font-style:italic">${int}</span>`;
+    };
+    monoRecognition.onerror=()=>{};
+    // Auto-restart if recognition stops (browser sometimes stops it after ~60s)
+    monoRecognition.onend=()=>{
+      if(!monoEnded && monoSec>0){
+        try{monoRecognition.start();}catch(e){}
+      }
+    };
+    try{monoRecognition.start();}catch(e){}
+  } else {
+    document.getElementById('mono-live-transcript').innerHTML='<span style="color:var(--muted);font-style:italic">⚠️ Transcription non disponible sur ce navigateur (utilisez Chrome)</span>';
+  }
+
   monoT=setInterval(()=>{
     monoSec--;updateMono();
-    if(monoSec<=0){clearInterval(monoT);document.getElementById('tup3').classList.add('show');stopMonoRec();}
+    if(monoSec<=0){
+      clearInterval(monoT);
+      document.getElementById('tup3').classList.add('show');
+      stopMonoRec();
+      setTimeout(()=>endMono(), 1500);
+    }
   },1000);
 }
 function updateMono(){
@@ -672,9 +718,12 @@ function updateMono(){
   if(monoSec<=30)b.className='bar danger';
 }
 function stopMonoRec(){
+  if(monoRecognition){try{monoRecognition.stop();}catch(e){}monoRecognition=null;}
   if(mrMono&&mrMono.state==='recording'){mrMono.stop();document.getElementById('mono-stop-btn').disabled=true;}
 }
+let monoEnded=false;
 async function endMono(){
+  if(monoEnded)return; monoEnded=true;
   clearInterval(monoT); stopMonoRec(); speechSynthesis.cancel();
   show('s5'); await genFeedback(true);
 }
@@ -683,21 +732,39 @@ async function endMono(){
 async function genFeedback(isT3){
   let content;
   if(isT3){
-    content=`Tâche 3 — Monologue suivi\nSujet : "${topic.text}"\nNote : l'étudiant a fait un monologue oral de 4 min 30 sur ce sujet. Évalue sur la base du sujet donné.`;
-    document.getElementById('qa-sec').style.display='none';
+    const transcript = monoSttTranscript.trim();
+    // Show transcript in feedback screen
+    document.getElementById('qa-sec').style.display='block';
+    document.getElementById('qa-rev').innerHTML = transcript
+      ? `<div style="background:#f8fcff;border:1px solid var(--bdr);border-radius:8px;padding:14px;font-size:13px;line-height:1.8;color:var(--txt)">${transcript}</div>`
+      : `<div style="color:var(--muted);font-style:italic;font-size:13px">Transcription non disponible (Chrome requis)</div>`;
+    document.querySelector('#qa-sec .lbl').textContent='Votre monologue (transcription)';
+    content=`Tâche 3 — Monologue suivi\nSujet : "${topic.text}"\n\nTranscription du monologue de l'étudiant :\n"${transcript||'(transcription non disponible)'}"\n\nÉvalue ce monologue sur la base du sujet et de la transcription.`;
   }else{
     const qa=qaLog.map((x,i)=>`Échange ${i+1}\nQuestion étudiant : ${x.question}\nRéponse examinateur : ${x.examinerReply||''}`).join('\n\n');
     content=`Tâche 2 — Interaction guidée\nMise en situation : "${topic.text}"\n\n${qa}\n\nÉvalue la qualité des questions de l'étudiant : pertinence, variété, richesse lexicale, syntaxe.`;
+    document.getElementById('qa-sec').style.display='block';
   }
-  const prompt=`Tu es évaluateur expert TCF Canada NCLC 7.\n${content}\n\nRetourne UNIQUEMENT un JSON valide sans backticks :\n{"score":<0-100>,"level":"NCLC X","coherence":<0-100>,"vocabulary":<0-100>,"grammar":<0-100>,"relevance":<0-100>,"summary":"...","strengths":"...","improvements":"...","qa_comments":[{"q":1,"comment":"..."}]}`;
+  const prompt=`Tu es évaluateur expert TCF Canada NCLC 7.\n${content}\n\nRetourne UNIQUEMENT un objet JSON valide, sans backticks, sans texte avant ou après :\n{"score":75,"level":"NCLC 7","coherence":70,"vocabulary":75,"grammar":72,"relevance":78,"summary":"commentaire ici","strengths":"points forts ici","improvements":"points à améliorer ici","qa_comments":[{"q":1,"comment":"commentaire"}]}`;
   try{
-    const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,messages:[{role:"user",content:prompt}]})});
+    const res=await fetch("https://api.anthropic.com/v1/messages",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,messages:[{role:"user",content:prompt}]})
+    });
     const d=await res.json();
-    const txt=d.content[0].text.trim().replace(/```json|```/g,'').trim();
-    showFB(JSON.parse(txt),isT3);
+    // Show error details if API failed
+    if(d.error){
+      document.getElementById('fb-load').innerHTML=`<div style="color:var(--red);padding:16px">Erreur API : ${d.error.message}</div>`;
+      return;
+    }
+    const raw=d.content[0].text.trim();
+    // Strip any accidental markdown
+    const clean=raw.replace(/^```json\s*/,'').replace(/^```\s*/,'').replace(/\s*```$/,'').trim();
+    const fb=JSON.parse(clean);
+    showFB(fb,isT3);
   }catch(e){
-    document.getElementById('fb-load').innerHTML='<div style="color:var(--red);padding:16px">Erreur d\'analyse — réessayez.</div>';
+    document.getElementById('fb-load').innerHTML=`<div style="color:var(--red);padding:16px">Erreur : ${e.message}</div>`;
   }
 }
 function showFB(fb,isT3){
