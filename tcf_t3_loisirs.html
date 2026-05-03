@@ -1100,6 +1100,76 @@ header {
 .cat-page-icon { font-size:2.2rem; line-height:1; }
 .cat-page-title { font-size:1.3rem; font-weight:700; letter-spacing:.02em; }
 .cat-page-cn { font-family:"Noto Serif SC",serif; font-size:.85rem; opacity:.85; margin-top:.2rem; }
+
+/* ══════════════════════════════
+   STRUCTURE BOX (in Arguments tab)
+══════════════════════════════ */
+.struct-box {
+  background: white;
+  border: 1.5px solid #C8D8E8;
+  border-radius: 12px;
+  overflow: hidden;
+  margin-top: 1.2rem;
+  box-shadow: 0 2px 10px rgba(58,171,220,.09);
+}
+.struct-box-title {
+  background: linear-gradient(90deg,#EAF0FB,#EAF7F0);
+  border-bottom: 2px solid #C8DFF0;
+  padding: .7rem 1.2rem;
+  font-size: .75rem;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: #1A4F85;
+}
+.struct-row {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: .8rem;
+  align-items: start;
+  padding: .85rem 1.2rem;
+  border-bottom: 1px solid #EEF3F8;
+}
+.struct-row-last { border-bottom: none; }
+.struct-section-label {
+  font-size: .72rem;
+  font-weight: 700;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  padding-top: .25rem;
+  line-height: 1.3;
+}
+.ssl-intro  { color: #1E6B4A; }
+.ssl-arg1   { color: #1A4F85; }
+.ssl-arg2   { color: #7D5A0A; }
+.ssl-nuance { color: #6B1E7A; }
+.ssl-ccl    { color: #5A4A3A; }
+.struct-lines {
+  display: flex;
+  flex-direction: column;
+  gap: .3rem;
+}
+.struct-line {
+  font-size: .88rem;
+  color: var(--mli-dark);
+  line-height: 1.55;
+  padding: .18rem 0;
+}
+.struct-blank {
+  display: inline-block;
+  border-bottom: 1.5px solid var(--mli-blue);
+  min-width: 80px;
+  color: #A0B8CC;
+  font-style: italic;
+  padding: 0 2px;
+}
+
+/* clickable arg-items */
+.arg-item { border-radius: 6px; transition: background .15s; }
+.arg-panel.pour  .arg-item:hover { background: var(--pour-bg); }
+.arg-panel.contre .arg-item:hover { background: var(--contre-bg); }
+.arg-item-hint { display: none; }
+
 </style>
 </head>
 <body>
@@ -1148,7 +1218,6 @@ header {
     <button class="dtab active" onclick="switchTab('arguments')">💬 Arguments</button>
     <button class="dtab" onclick="switchTab('vocab')">📖 Vocabulaire</button>
     <button class="dtab" onclick="switchTab('practice')">✏️ Pratique</button>
-    <button class="dtab" onclick="switchTab('template')">📄 Modèle</button>
   </div>
   <div class="dtab-content active" id="tab-arguments">
     <div class="arg-cols">
@@ -1161,18 +1230,59 @@ header {
         <div class="arg-list" id="arg-contre"></div>
       </div>
     </div>
+    
+    <!-- STRUCTURE DE RÉPONSE -->
+    <div class="struct-box" id="struct-box">
+      <div class="struct-box-title">📋 Structure de réponse · 回答结构</div>
+
+      <div class="struct-row ssl-intro-row">
+        <div class="struct-section-label ssl-intro">🟢 Introduction</div>
+        <div class="struct-lines">
+          <div class="struct-line">Merci de m'avoir donné la parole.</div>
+          <div class="struct-line">C'est un sujet très intéressant.</div>
+          <div class="struct-line">La question est : <span class="struct-blank">[题目]</span></div>
+          <div class="struct-line">Pour ma part, je pense que <span class="struct-blank">___</span> , et je vais vous expliquer pourquoi.</div>
+        </div>
+      </div>
+
+      <div class="struct-row">
+        <div class="struct-section-label ssl-arg1">🔵 Argument 1</div>
+        <div class="struct-lines">
+          <div class="struct-line">Tout d'abord, <span class="struct-blank">___</span> .</div>
+          <div class="struct-line">Par exemple, <span class="struct-blank">___</span> .</div>
+        </div>
+      </div>
+
+      <div class="struct-row">
+        <div class="struct-section-label ssl-arg2">🟡 Argument 2</div>
+        <div class="struct-lines">
+          <div class="struct-line">Ensuite, <span class="struct-blank">___</span> .</div>
+          <div class="struct-line">En effet, <span class="struct-blank">___</span> .</div>
+        </div>
+      </div>
+
+      <div class="struct-row">
+        <div class="struct-section-label ssl-nuance">🟣 Nuance</div>
+        <div class="struct-lines">
+          <div class="struct-line">Cependant, <span class="struct-blank">___</span> .</div>
+          <div class="struct-line">Malgré cela, je reste convaincu(e) que <span class="struct-blank">___</span> .</div>
+        </div>
+      </div>
+
+      <div class="struct-row struct-row-last">
+        <div class="struct-section-label ssl-ccl">🟤 Conclusion</div>
+        <div class="struct-lines">
+          <div class="struct-line">En conclusion, <span class="struct-blank">___</span> .</div>
+          <div class="struct-line">Et je vous remercie de m'avoir écouté(e).</div>
+        </div>
+      </div>
+    </div>
   </div>
   <div class="dtab-content" id="tab-vocab">
     <div class="vocab-container" id="vocab-container"></div>
   </div>
   <div class="dtab-content" id="tab-practice">
     <div class="practice-container" id="practice-container"></div>
-  </div>
-  <div class="dtab-content" id="tab-template">
-    <div class="word-section">
-      <div class="word-section-title">📄 Modèle de réponse — Écrit style Word · 答题模板</div>
-      <div class="word-doc" id="word-doc"></div>
-    </div>
   </div>
 </div>
 
@@ -2365,7 +2475,7 @@ function buildPractice(q) {
 
     <div class="practice-actions">
       <button class="btn-show-ref" onclick="toggleRef()">👁 Voir exemple de référence · 查看参考</button>
-      <button class="btn-export" onclick="exportWork('${q.fr.replace(/'/g,"\'")}')">📤 Exporter pour le professeur · 导出作业</button>
+      <button class="btn-export" onclick="exportWork('${q.fr.replace(/'/g,"\\'")}')">📤 Exporter pour le professeur · 导出作业</button>
       <button class="btn-clear" onclick="clearPractice()">🗑 Effacer tout</button>
     </div>
 
@@ -2519,6 +2629,8 @@ ${notes}`;
   URL.revokeObjectURL(url);
 }
 
+
+
 // ═══════════════════════════════════════════════
 //  BUILD DETAIL
 // ═══════════════════════════════════════════════
@@ -2535,7 +2647,7 @@ function buildDetail(q) {
 
   // POUR
   const pourEl = document.getElementById('arg-pour');
-  pourEl.innerHTML = q.pour.map(a => `
+  pourEl.innerHTML = q.pour.map((a,i) => `
     <div class="arg-item">
       <div class="arg-main">• ${a.arg}</div>
       <div class="arg-cn-small">${a.cn}</div>
@@ -2545,7 +2657,7 @@ function buildDetail(q) {
 
   // CONTRE
   const contreEl = document.getElementById('arg-contre');
-  contreEl.innerHTML = q.contre.map(a => `
+  contreEl.innerHTML = q.contre.map((a,i) => `
     <div class="arg-item">
       <div class="arg-main">• ${a.arg}</div>
       <div class="arg-cn-small">${a.cn}</div>
@@ -2553,95 +2665,11 @@ function buildDetail(q) {
     </div>
   `).join('');
 
-  // WORD TEMPLATE — complete sentences with (可替换) hints
-  const p1 = q.pour[0];
-  const p2 = q.pour[1] || q.pour[0];
-  const c1 = q.contre[0];
-  const lc = s => s.charAt(0).toLowerCase() + s.slice(1);
+  // pre-fill question in structure
+  const sfq = document.getElementById('sf-intro-question');
+  if (sfq) sfq.value = q.fr;
 
-  document.getElementById('word-doc').innerHTML = `
-    <div class="doc-title">TCF Canada – Tâche 3 : Expression d'un point de vue</div>
-    <div class="doc-sub">${q.fr}</div>
-    <hr>
-
-    <p><span class="word-section-head">Introduction</span> <span class="word-tag">开头段</span></p>
-    <p style="margin-top:.55rem">
-      Merci de m'avoir donné la parole.
-      <span class="word-note">礼貌开场，感谢考官给予发言机会。</span>
-    </p>
-    <p style="margin-top:.45rem">
-      C'est un sujet très intéressant <span class="word-sub">（可替换：important / complexe / d'actualité）</span>.
-      <span class="word-note">表达对话题的兴趣，显示积极态度。</span>
-    </p>
-    <p style="margin-top:.45rem">
-      La question est : <span class="word-highlight">${q.fr}</span>
-      <span class="word-note">重申题目，让听者明白你理解了讨论的焦点。</span>
-    </p>
-    <p style="margin-top:.45rem">
-      Pour ma part, je pense que <span class="word-fill">c'est un sujet qui mérite une réponse nuancée</span> <span class="word-sub">（用自己的立场替换此句）</span>, et je vais vous expliquer pourquoi.
-      <span class="word-note">明确表达个人立场，并预告接下来的论述内容。</span>
-    </p>
-
-    <hr>
-    <p><span class="word-section-head">Développement</span> <span class="word-tag">论述段</span></p>
-
-    <p style="margin-top:.65rem"><strong>Premier argument <span class="word-tag">论点一</span></strong></p>
-    <p style="margin-top:.35rem">
-      Tout d'abord, je voudrais souligner que <span class="word-fill">${lc(p1.arg)}</span>.
-      <span class="word-note">用 « Tout d'abord » 引出第一个论点，清晰有条理。</span>
-    </p>
-    <p style="margin-top:.3rem">
-      Par exemple, <span class="word-fill">${p1.ex}</span> <span class="word-sub">（可用自己的例子替换）</span>
-      <span class="word-note">具体例子使论点更有说服力，越真实越好。</span>
-    </p>
-    <p style="margin-top:.3rem">
-      C'est pourquoi je pense que <span class="word-fill">${lc(p1.arg)}</span> est un aspect fondamental.
-      <span class="word-note">结尾小句强调论点，收尾有力。</span>
-    </p>
-
-    <p style="margin-top:.8rem"><strong>Deuxième argument <span class="word-tag">论点二</span></strong></p>
-    <p style="margin-top:.35rem">
-      Ensuite, il est important de mentionner que <span class="word-fill">${lc(p2.arg)}</span>.
-      <span class="word-note">用 « Ensuite » 过渡到第二论点，保持结构清晰。</span>
-    </p>
-    <p style="margin-top:.3rem">
-      En effet, <span class="word-fill">${p2.ex}</span> <span class="word-sub">（可用自己的例子替换）</span>
-      <span class="word-note">用 « En effet » 引出佐证，加强说服力。</span>
-    </p>
-    <p style="margin-top:.3rem">
-      Cela montre bien que <span class="word-fill">${lc(p2.arg)}</span> joue un rôle essentiel dans ce débat.
-      <span class="word-note">总结本段，强调论点与主题的关联性。</span>
-    </p>
-
-    <p style="margin-top:.8rem"><strong>Nuance / Contre-argument <span class="word-tag">转折反驳</span></strong></p>
-    <p style="margin-top:.35rem">
-      Cependant, je reconnais que <span class="word-fill">${lc(c1.arg)}</span>.
-      <span class="word-note">用 « Cependant » 承认对立观点，体现思维的全面性与平衡感。</span>
-    </p>
-    <p style="margin-top:.3rem">
-      En effet, <span class="word-fill">${c1.ex}</span> <span class="word-sub">（可用自己的例子替换）</span>
-      <span class="word-note">用事实说明对立面的合理性，显示论述不偏激。</span>
-    </p>
-    <p style="margin-top:.3rem">
-      Malgré cela, je reste convaincu(e) que <span class="word-fill">${lc(p1.arg)}</span> demeure l'argument le plus déterminant <span class="word-sub">（可替换为自己的核心立场）</span>.
-      <span class="word-note">用 « Malgré cela » 拉回自己的立场，完成转折，逻辑完整。</span>
-    </p>
-
-    <hr>
-    <p><span class="word-section-head">Conclusion</span> <span class="word-tag">结尾段</span></p>
-    <p style="margin-top:.55rem">
-      En conclusion, pour répondre à la question posée, je pense que <span class="word-fill">${lc(p1.arg)}, et que ${lc(p2.arg)}</span> <span class="word-sub">（用自己的立场总结替换）</span>.
-      <span class="word-note">重申立场，简洁呼应开头，逻辑首尾一贯。</span>
-    </p>
-    <p style="margin-top:.45rem">
-      Ces deux éléments me semblent essentiels pour aborder ce sujet de manière équilibrée <span class="word-sub">（可替换为自己的总结语）</span>.
-      <span class="word-note">对整体论述做评价，体现思维深度。</span>
-    </p>
-    <p style="margin-top:.7rem">
-      Et je vous remercie de m'avoir écouté(e).
-      <span class="word-note">礼貌结束发言，留下良好印象。</span>
-    </p>
-  `;
+  // template tab removed
 }
 
 
